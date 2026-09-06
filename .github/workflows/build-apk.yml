@@ -1,0 +1,422 @@
+name: Build NadScan V1.0 APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'NadScan_Android_V1_0_OFFLINE_QR_SCANNER.zip'
+      - '.github/workflows/build-apk.yml'
+
+jobs:
+  build:
+    name: Build NadScan V1.0 APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ==========================================
+      # 1. CHECKOUT
+      # ==========================================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ==========================================
+      # 2. JAVA 17
+      # ==========================================
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ==========================================
+      # 3. GRADLE 8.9
+      # ==========================================
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # ==========================================
+      # 4. VERIFY ZIP
+      # ==========================================
+      - name: Verify NadScan V1.0 ZIP
+        shell: bash
+        run: |
+          set -e
+
+          ZIP="NadScan_Android_V1_0_OFFLINE_QR_SCANNER.zip"
+
+          echo "========================================"
+          echo "NADSCAN V1.0"
+          echo "OFFLINE QR SCANNER"
+          echo "========================================"
+          echo ""
+
+          echo "Repository contents:"
+          ls -lah
+          echo ""
+
+          if [ ! -f "$ZIP" ]; then
+            echo "ERROR:"
+            echo "$ZIP was not found in repository root."
+            echo ""
+            echo "Required exact filename:"
+            echo "NadScan_Android_V1_0_OFFLINE_QR_SCANNER.zip"
+            exit 1
+          fi
+
+          echo "ZIP FOUND:"
+          ls -lh "$ZIP"
+
+          echo ""
+          echo "Testing ZIP integrity..."
+          unzip -t "$ZIP"
+
+          echo ""
+          echo "ZIP integrity PASSED."
+
+      # ==========================================
+      # 5. EXTRACT PACKAGE
+      # ==========================================
+      - name: Extract NadScan V1.0
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf extracted
+          mkdir -p extracted
+
+          unzip -q \
+            NadScan_Android_V1_0_OFFLINE_QR_SCANNER.zip \
+            -d extracted
+
+          echo ""
+          echo "========================================"
+          echo "EXTRACTED PACKAGE"
+          echo "========================================"
+
+          find extracted \
+            -maxdepth 7 \
+            -type f \
+            | sort \
+            | head -350
+
+      # ==========================================
+      # 6. DETECT ANDROID PROJECT ROOT
+      # ==========================================
+      - name: Detect Android project root
+        shell: bash
+        run: |
+          set -e
+
+          EXPECTED="extracted/NadScan_Android_V1_0_OFFLINE_QR_SCANNER"
+
+          if [ -f "$EXPECTED/settings.gradle.kts" ]; then
+            PROJECT_ROOT="$EXPECTED"
+
+          elif [ -f "extracted/settings.gradle.kts" ]; then
+            PROJECT_ROOT="extracted"
+
+          else
+            SETTINGS=$(find extracted \
+              -type f \
+              \( -name "settings.gradle.kts" -o -name "settings.gradle" \) \
+              | head -1 || true)
+
+            if [ -z "$SETTINGS" ]; then
+              echo ""
+              echo "ERROR:"
+              echo "Could not locate Android settings.gradle file."
+              echo ""
+              echo "Extracted directories:"
+              find extracted -maxdepth 6 -type d | sort
+              exit 1
+            fi
+
+            PROJECT_ROOT=$(dirname "$SETTINGS")
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "PROJECT ROOT"
+          echo "========================================"
+          echo "$PROJECT_ROOT"
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+      # ==========================================
+      # 7. VERIFY ANDROID PROJECT
+      # ==========================================
+      - name: Verify Android project
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "ANDROID PROJECT CHECK"
+          echo "========================================"
+
+          echo "Project root:"
+          echo "$PROJECT_ROOT"
+          echo ""
+
+          test -f "$PROJECT_ROOT/settings.gradle.kts"
+          test -f "$PROJECT_ROOT/build.gradle.kts"
+          test -f "$PROJECT_ROOT/app/build.gradle.kts"
+          test -f "$PROJECT_ROOT/app/src/main/AndroidManifest.xml"
+
+          echo "settings.gradle.kts FOUND"
+          echo "build.gradle.kts FOUND"
+          echo "app/build.gradle.kts FOUND"
+          echo "AndroidManifest.xml FOUND"
+
+          echo ""
+          echo "Android project verified."
+
+      # ==========================================
+      # 8. VERIFY NADSCAN IDENTITY
+      # ==========================================
+      - name: Verify NadScan application identity
+        shell: bash
+        run: |
+          set -e
+
+          FILE="$PROJECT_ROOT/app/build.gradle.kts"
+
+          echo ""
+          echo "========================================"
+          echo "NADSCAN APPLICATION CHECK"
+          echo "========================================"
+
+          grep -q 'namespace = "ae.nadscan.app"' "$FILE"
+          grep -q 'applicationId = "ae.nadscan.app"' "$FILE"
+
+          echo "Namespace:"
+          echo "ae.nadscan.app"
+          echo ""
+          echo "Application ID:"
+          echo "ae.nadscan.app"
+          echo ""
+          echo "NadScan installs separately from NadEx."
+
+      # ==========================================
+      # 9. VERIFY VERSION
+      # ==========================================
+      - name: Verify NadScan V1.0 version
+        shell: bash
+        run: |
+          set -e
+
+          FILE="$PROJECT_ROOT/app/build.gradle.kts"
+
+          echo ""
+          echo "========================================"
+          echo "VERSION CHECK"
+          echo "========================================"
+
+          grep -q 'versionCode = 1' "$FILE"
+          grep -q 'versionName = "1.0"' "$FILE"
+
+          echo "versionCode = 1"
+          echo "versionName = 1.0"
+
+      # ==========================================
+      # 10. VERIFY OFFLINE CONFIGURATION
+      # ==========================================
+      - name: Verify offline scanner configuration
+        shell: bash
+        run: |
+          set -e
+
+          MANIFEST="$PROJECT_ROOT/app/src/main/AndroidManifest.xml"
+
+          echo ""
+          echo "========================================"
+          echo "OFFLINE / CAMERA CHECK"
+          echo "========================================"
+
+          grep -q 'android.permission.CAMERA' "$MANIFEST"
+
+          if grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            echo ""
+            echo "ERROR:"
+            echo "INTERNET permission was found."
+            echo "NadScan V1.0 is intended to operate offline."
+            exit 1
+          fi
+
+          echo "CAMERA permission FOUND"
+          echo "INTERNET permission NOT PRESENT"
+          echo ""
+          echo "Offline configuration verified."
+
+      # ==========================================
+      # 11. VERIFY SOURCE FILES
+      # ==========================================
+      - name: Verify NadScan source
+        shell: bash
+        run: |
+          set -e
+
+          SOURCE="$PROJECT_ROOT/app/src/main/java/ae/nadscan/app"
+
+          echo ""
+          echo "========================================"
+          echo "SOURCE CHECK"
+          echo "========================================"
+
+          test -f "$SOURCE/MainActivity.kt"
+          test -f "$SOURCE/ScanActivity.kt"
+
+          echo "MainActivity.kt FOUND"
+          echo "ScanActivity.kt FOUND"
+
+          echo ""
+          echo "Layouts:"
+          find "$PROJECT_ROOT/app/src/main/res/layout" \
+            -type f \
+            -maxdepth 1 \
+            -printf "%f\n" \
+            | sort
+
+          echo ""
+          echo "Graphics:"
+          find "$PROJECT_ROOT/app/src/main/res" \
+            -type f \
+            \( -name "*.png" -o -name "*.webp" -o -name "*.xml" \) \
+            | sort \
+            | head -150
+
+      # ==========================================
+      # 12. SHOW GRADLE INFO
+      # ==========================================
+      - name: Show Gradle information
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          echo ""
+          echo "========================================"
+          echo "GRADLE INFORMATION"
+          echo "========================================"
+
+          gradle --version
+
+      # ==========================================
+      # 13. CLEAN
+      # ==========================================
+      - name: Clean NadScan V1.0
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "CLEANING NADSCAN V1.0"
+          echo "========================================"
+
+          gradle clean --stacktrace
+
+      # ==========================================
+      # 14. BUILD APK
+      # ==========================================
+      - name: Build NadScan V1.0 APK
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "BUILDING NADSCAN V1.0"
+          echo "OFFLINE QR SCANNER"
+          echo "========================================"
+
+          gradle assembleDebug --stacktrace
+
+      # ==========================================
+      # 15. LOCATE APK
+      # ==========================================
+      - name: Locate generated APK
+        shell: bash
+        run: |
+          set -e
+
+          echo ""
+          echo "========================================"
+          echo "SEARCHING FOR APK"
+          echo "========================================"
+
+          DEFAULT_APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+
+          find "$PROJECT_ROOT/app/build/outputs" \
+            -type f \
+            -name "*.apk" \
+            -print || true
+
+          if [ -f "$DEFAULT_APK" ]; then
+            APK="$DEFAULT_APK"
+          else
+            APK=$(find \
+              "$PROJECT_ROOT/app/build/outputs/apk" \
+              -type f \
+              -name "*.apk" \
+              | head -1 || true)
+          fi
+
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo ""
+            echo "ERROR:"
+            echo "NadScan APK was not generated."
+            echo ""
+            find "$PROJECT_ROOT/app/build" \
+              -maxdepth 8 \
+              -type f \
+              | sort \
+              | tail -300 || true
+            exit 1
+          fi
+
+          echo ""
+          echo "APK FOUND:"
+          echo "$APK"
+          echo ""
+
+          ls -lh "$APK"
+
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      # ==========================================
+      # 16. PREPARE FINAL APK
+      # ==========================================
+      - name: Prepare final NadScan APK
+        shell: bash
+        run: |
+          set -e
+
+          rm -rf release
+          mkdir -p release
+
+          cp \
+            "$APK_PATH" \
+            "release/NadScan-V1.0-Offline-QR-Scanner.apk"
+
+          echo ""
+          echo "========================================"
+          echo "FINAL NADSCAN APK READY"
+          echo "========================================"
+
+          ls -lh \
+            "release/NadScan-V1.0-Offline-QR-Scanner.apk"
+
+      # ==========================================
+      # 17. UPLOAD APK
+      # ==========================================
+      - name: Upload NadScan V1.0 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NadScan-V1-0-Offline-QR-Scanner-APK
+          path: release/NadScan-V1.0-Offline-QR-Scanner.apk
+          if-no-files-found: error
+          retention-days: 30
